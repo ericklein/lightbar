@@ -1,7 +1,7 @@
 /*
 Project Name : Lightbar
 Developer : Eric Klein Jr. (temp2@ericklein.com)
-Description : Light strip with functions for key effects and functionality
+Description : Control LED  strips for simple lighting installations via buttons, rotary encoder
 Last Revision Date : 03/02/16
 
 Revisions
@@ -12,16 +12,34 @@ Revisions
   -  prototypes for desired lighting functions (lightXxYy)
 04/21/15
   -  fixed bugs in lightColorFill
+03/02/16
+  -  first version in GitHub
+  -  added rotary encoder, code is extremely crude
+04/27/16
+  -  rotary encoder push is captured
+  -  code readability improved, still much to do
  
 Sources
   -  Uses LPD8806 library from Adafruit https://github.com/adafruit/LPD8806
   
 Target
   -  built for Arduino Uno
+  -  Adafruit Rotary Encoder 377b
   
 Improvements
-  -  move light functions to library
-  -  4/21/15 - why do many functions pass parameters that are not used?
+  -  04/21/15
+       -  move light functions to library
+       -  why do many functions pass parameters that are not used?
+  -  03/02/16
+       -  switch from intensity (one value) to r,g,b levels
+       -  stop int based wrap around of intensity
+       -  on/off switch
+       -  toggle light function switch
+       -  can I use FastLED or other generic library
+       -  use rotary encoder push as button [COMPLETE 04/27/16]
+       -  code optimization
+  -  04/27/16
+      -  consistent use of wire color for ground, etc.
   
 Light functions
   -  lightRainbow -> 3 cycles of all 384 colors in the wheel
@@ -34,17 +52,34 @@ Light functions
   
 */
 
+// Library initialization
 #include "LPD8806.h"
 #include "SPI.h"
 
-// Number of RGB LEDs in strand
-int nLEDs = 32;
+// Arduino pin assignments
+#define dataPin                  8  // LED strip
+#define clockPin                 9  // LED strip
+#define button1Pin               11  // push button 1
+#define button2Pin               12  // push button 2
+#define rotaryEncoder1Pin        2  // rotary encoder rotation
+#define rotaryEncoder2Pin        3  // rotary encoder rotation
+#define rotaryEncoderButtonPin   4
 
-// Output pins, can be any valid output pins
-int dataPin  = 8; // SPI data
-int clockPin = 9;
+// Intial Variable declarations and assignments
+#define stripLength 18              // Number of RGB LEDs on strip
+const byte longPressLength = 25;    // Min nr of loops for a long press
+const byte loopDelay = 20;          // Delay per main loop in ms
 
-LPD8806 strip = LPD8806(nLEDs, dataPin, clockPin);
+int intensity = 40;
+int stripcolor = 0;
+enum { EV_NONE=0, EV_SHORTPRESS, EV_LONGPRESS };
+volatile int number = 0;                // Testnumber, print it when it changes value,
+                                        // used in loop and both interrupt routines
+int oldnumber = number;
+volatile boolean halfleft = false;      // Used in both interrupt routines
+volatile boolean halfright = false;
+
+LPD8806 strip = LPD8806(stripLength, dataPin, clockPin);
 
 // You can optionally use hardware SPI for faster writes, just leave out
 // the data and clock pin parameters.  But this does limit use to very
@@ -53,27 +88,12 @@ LPD8806 strip = LPD8806(nLEDs, dataPin, clockPin);
 // clock = pin 52.  For 32u4 Breakout Board+ and Teensy, data = pin B2,
 // clock = pin B1.  For Leonardo, this can ONLY be done on the ICSP pins.
 
-#define BUTTON1_PIN               11  // Button 1
-#define BUTTON2_PIN               12  // Button 2
-
-#define DEFAULT_LONGPRESS_LEN    25  // Min nr of loops for a long press
-#define DELAY                    20  // Delay per loop in ms
-
-//////////////////////////////////////////////////////////////////////////////
-
-enum { EV_NONE=0, EV_SHORTPRESS, EV_LONGPRESS };
-
-//////////////////////////////////////////////////////////////////////////////
-
-int intensity = 40;
-int stripcolor = 0;
-
 // Class definition
 
 class ButtonHandler {
   public:
     // Constructor
-    ButtonHandler(int pin, int longpress_len=DEFAULT_LONGPRESS_LEN);
+    ButtonHandler(int pin, int longpress_len=longPressLength);
 
     // Initialization done after construction, to permit static instances
     void init();
@@ -95,8 +115,7 @@ ButtonHandler::ButtonHandler(int p, int lp)
 
 void ButtonHandler::init()
 {
-  pinMode(pin, INPUT);
-  digitalWrite(pin, HIGH); // pull-up
+  pinMode(pin, INPUT_PULLUP);
   was_pressed = false;
   pressed_counter = 0;
 }
@@ -130,9 +149,9 @@ int ButtonHandler::handle()
 //////////////////////////////////////////////////////////////////////////////
 
 // Instantiate button objects
-ButtonHandler button1(BUTTON1_PIN);
-//ButtonHandler button2(BUTTON2_PIN, DEFAULT_LONGPRESS_LEN*2);
-ButtonHandler button2(BUTTON2_PIN);
+ButtonHandler button1(button1Pin);
+ButtonHandler button2(button2Pin);
+ButtonHandler button3(rotaryEncoderButtonPin);
 
 void print_event(const char* button_name, int event)
 {
@@ -164,31 +183,27 @@ void print_event(const char* button_name, int event)
     Serial.print("2BY"[event]);
     stripcolor = 4;
   }
+  if ((button_name=="3")&&(event==1))
+    {
+      Serial.print("Encoder button");
+    }
 }
-
-volatile int number = 0;                // Testnumber, print it when it changes value,
-                                        // used in loop and both interrupt routines
-int oldnumber = number;
-
-
-
-volatile boolean halfleft = false;      // Used in both interrupt routines
-volatile boolean halfright = false;
 
 void setup() {
   Serial.begin(9600);
-  // Start up the LED strip
+  // Setup LED strip
   strip.begin();
   // Update the strip, to start they are all 'off'
   strip.show();
+  // Setup push buttons
   button1.init();
   button2.init();
-    pinMode(2, INPUT);
-  digitalWrite(2, HIGH);                // Turn on internal pullup resistor
-  pinMode(3, INPUT);
-  digitalWrite(3, HIGH);                // Turn on internal pullup resistor
-  attachInterrupt(0, isr_2, FALLING);   // Call isr_2 when digital pin 2 goes LOW
-  attachInterrupt(1, isr_3, FALLING);   // Call isr_3 when digital pin 3 goes LOW
+  button3.init();
+  // Setup rotary encoder
+  pinMode(rotaryEncoder1Pin, INPUT_PULLUP);
+  pinMode(rotaryEncoder2Pin, INPUT_PULLUP);
+  attachInterrupt(0, checkRE1Pin, FALLING);   // Call checkRE1Pin when digital pin 2 goes LOW
+  attachInterrupt(1, checkRE2Pin, FALLING);   // Call checkRE2Pin when digital pin 3 goes LOW
 }
 
 void loop() {
@@ -196,10 +211,12 @@ void loop() {
     // handle button
   int event1 = button1.handle();
   int event2 = button2.handle();
+  int event3 = button3.handle();
 
   // do other things
   print_event("1", event1);
   print_event("2", event2);
+  print_event("3", event3);
   
   
     if(number > oldnumber)
@@ -240,7 +257,7 @@ void loop() {
                 oldnumber = number;
       }
 
-  delay(DELAY);
+  delay(loopDelay);
 
 //  lightColorChase(strip.Color(127, 127, 127), 50); // White
 //  lightColorChase(strip.Color(127,   0,   0), 50); // Red
@@ -405,25 +422,25 @@ uint32_t Wheel(uint16_t WheelPos)
   return(strip.Color(r,g,b));
 }
 
-void isr_2(){                                              // Pin2 went LOW
+void checkRE1Pin(){                                              // Pin2 went LOW
   delay(1);                                                // Debounce time
-  if(digitalRead(2) == LOW){                               // Pin2 still LOW ?
-    if(digitalRead(3) == HIGH && halfright == false){      // -->
+  if(digitalRead(rotaryEncoder1Pin) == LOW){                               // Pin2 still LOW ?
+    if(digitalRead(rotaryEncoder2Pin) == HIGH && halfright == false){      // -->
       halfright = true;                                    // One half click clockwise
     }  
-    if(digitalRead(3) == LOW && halfleft == true){         // <--
+    if(digitalRead(rotaryEncoder2Pin) == LOW && halfleft == true){         // <--
       halfleft = false;                                    // One whole click counter-
       number--;                                            // clockwise
     }
   }
 }
-void isr_3(){                                             // Pin3 went LOW
+void checkRE2Pin(){                                             // Pin3 went LOW
   delay(1);                                               // Debounce time
-  if(digitalRead(3) == LOW){                              // Pin3 still LOW ?
-    if(digitalRead(2) == HIGH && halfleft == false){      // <--
+  if(digitalRead(rotaryEncoder2Pin) == LOW){                              // Pin3 still LOW ?
+    if(digitalRead(rotaryEncoder1Pin) == HIGH && halfleft == false){      // <--
       halfleft = true;                                    // One half  click counter-
     }                                                     // clockwise
-    if(digitalRead(2) == LOW && halfright == true){       // -->
+    if(digitalRead(rotaryEncoder1Pin) == LOW && halfright == true){       // -->
       halfright = false;                                  // One whole click clockwise
       number++;
     }
