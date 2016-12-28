@@ -2,7 +2,7 @@
   Project Name : Lightbar
   Developer : Eric Klein Jr. (temp2@ericklein.com)
   Description : Control LED strips for simple lighting installations via buttons, rotary encoder
-  Last Revision Date : 05/22/16
+  Last Revision Date : 12/27/16
 
   Revisions
   10/17/14
@@ -23,6 +23,9 @@
   - fixed wrap-around of intensity bug (03/02/16)
   - moved light test script from loop() to lightTest, no dev work done on function itself
   - hard coded button functionality, now can comment out functionality based on hardware config
+  12/27/16
+  - completed 05/22/16 revisions
+  - switch from LED intensity (one value) to r,g,b levels
 
   Sources
   -  Uses LPD8806 library from Adafruit https://github.com/adafruit/LPD8806
@@ -36,10 +39,10 @@
        -  move light functions to library
        -  why do many functions pass parameters that are not used?
   -  03/02/16
-       -  switch from intensity (one value) to r,g,b levels if I want to use colors other than RGBW
+       -  switch from intensity (one value) to r,g,b levels if I want to use colors other than RGBW [COMPLETE 12/27/16]
        -  stop int based wrap around of intensity [COMPLETE 05/22/16]
-       -  on/off switch [COMPLETE ]
-       -  toggle light function switch [COMPLETE ]
+       -  on/off switch
+       -  toggle light function switch
        -  can I use FastLED or other generic library
        -  use rotary encoder push as button [COMPLETE 04/27/16]
        -  code optimization
@@ -48,7 +51,10 @@
 		  - int to byte conversation for variables
   -   05/22/16
       - Why do I care about halfLeft and halfRight?
-      - Enumerate colors white, red, blue, green?
+      - Enumerate colors white, red, blue, green? [NOT NEEDED 12/27/16]
+  -   12/27/16 (from Evernote)
+      - standard connectors for LED strip
+      - resistor in front of LED #1
 
   Light functions
   -  lightRainbow -> 3 cycles of all 384 colors in the wheel
@@ -66,32 +72,27 @@
 #include "LPD8806.h"
 #include "SPI.h"
 
-// Arduino pin assignments
-#define dataPin                  8  // LED strip
-#define clockPin                 9  // LED strip
-#define button1Pin               11  // push button 1 is used to select color
-#define button2Pin               12  // push button 2 is used to select light function
+// Assign Arduino pins
 #define rotaryEncoder1Pin        2  // rotary encoder rotation
 #define rotaryEncoder2Pin        3  // rotary encoder rotation
 #define rotaryEncoderButtonPin   4  // rotary encoder button is used to turn LED strip on and off
+#define dataPin                  8  // LED strip
+#define clockPin                 9  // LED strip
+#define colorSelectPin           11  // push button used to select color
+#define lightFieldEffectPin      12  // push button used to select light field effects
 
-// Intial Variable declarations and assignments
+// Assign global variables
 #define stripLength 18              // Number of RGB LEDs on strip
 const byte longPressLength = 25;    // Min number of loops for a long press
 const byte loopDelay = 20;          // Delay per main loop in ms
-
-int red = 40;
-int blue = 40;
-int green = 40;
-int stripcolor = 0; //white = 0; red = 1; blue = 2; green = 3
-//uint32_t white = strip.Color(255,255,255);
-//uint32_t red = strip.Color(255, 0, 0);
-//uint32_t blue = strip.Color(255, 0, 255);
-//uint32_t magenta = strip.Color(255, 0, 255);
+int red = 0;
+int blue = 0;
+int green = 0;
+int stripColor = 0; //white = 0; red = 1; green = 2; blue = 3
 
 enum { EV_NONE = 0, EV_SHORTPRESS, EV_LONGPRESS };
-volatile boolean rotateClockWise = FALSE;
-volatile boolean rotateCounterClockWise = FALSE;
+volatile boolean rotateClockWise = false;
+volatile boolean rotateCounterClockWise = false;
 volatile boolean halfleft = false;      // Used in both interrupt routines
 volatile boolean halfright = false;
 
@@ -162,43 +163,85 @@ int ButtonHandler::handle()
   return event;
 }
 
-//////////////////////////////////////////////////////////////////////////////
-
 // Instantiate button objects
-ButtonHandler buttonColorSelect(button1Pin);
-ButtonHandler buttonLightFunction(button2Pin);
+ButtonHandler buttonColorSelect(colorSelectPin);
+ButtonHandler buttonLightFieldEffect(lightFieldEffectPin);
 ButtonHandler buttonOnOff(rotaryEncoderButtonPin);
 
 void buttonEvent(const char* button_name, int event)
 {
-  if ((button_name == "ColorSelect") && (event == 1)) //short press on ColorSelect rotates LED strip color
+  //short press on ColorSelect rotates LED strip color
+  if ((button_name == "ColorSelect") && (event == 1))
   {
-    //lightColorFill(strip.Color(intensity,0,0));  // Red
-    //stripcolor = 1;
-    //Serial.println(stripcolor); //debug text
+    switch (stripColor)
+    {
+      case 0: //white -> red
+        blue = 0;
+        green = 0;
+        stripColor = 1;
+      break;
+      case 1: //red -> green
+        green = red;
+        red = 0;
+        blue = 0;
+        stripColor = 2;
+              //Serial.println(debugText);
+              break;
+      case 2: //green -> blue
+        blue = green;
+        green = 0;
+        stripColor = 3;
+              //Serial.println(debugText);
+              break;
+      case 3: //blue -> red
+        red = blue;
+        blue = 0;
+        stripColor = 1;
+              //Serial.println(debugText);
+              break;
+    }
+      Serial.print(red);
+      Serial.print(green);
+      Serial.println(blue);
+      lightColorFill(strip.Color(red, green, blue));
+      Serial.println("ColorSelect button short press -> cycle color");
+  }
+  //long press on ColorSelect resets LED strip color to white
+  if ((button_name == "ColorSelect") && (event == 2))
+  {
+   switch (stripColor)
+    {
+      case 1: //red -> white
+        green = red;
+        blue = red;
+      case 2: //green -> white
+        blue = green;
+        red = green;
+      case 3: //blue -> red
+        green = red;
+    }
+    stripColor = 0;
+      lightColorFill(strip.Color(red, green, blue));
+    Serial.println("ColorSelect button long press -> reset LED strip color to white");
   }
 
-  if ((button_name == "ColorSelect") && (event == 2)) //long press on ColorSelect resets LED strip color to white
+  //short press on LightFieldEffect does ???
+  if ((button_name == "LightFieldEffect") && (event == 1))
   {
-    // is the strip white already?
-    if (red == blue == green)
-    // calculate the current intensity
-    // set white color at current intensity
-    lightColorFill(strip.Color(red, green, blue));
-    stripcolor = 0;
-    Serial.println("long press on ColorSelect button reset LED strip color to white"); //debug text
+        Serial.println("LightFieldEffect button short press"); //debug text
   }
 
-  if ((button_name == "LightFunction") && (event == 1))
+  //long press on LightFunction does ???
+  if ((button_name == "LightFieldEffect") && (event == 2))
   {
+        lightTest();
+        Serial.println("LightFieldEffect button long press"); //debug text
   }
-
-  if ((button_name == "2") && (event == 2)) //long press on LightFunction does ???
+  
+  //short press on OnOff turns the strip on and off
+  if ((button_name == "OnOff") && (event == 1))
   {
-  }
-  if ((button_name == "OnOff") && (event == 1)) //short press on OnOff turns the strip on and off
-  {
-    Serial.print("Encoder button"); //debug text
+    Serial.println("Encoder button short press"); //debug text
   }
 }
 
@@ -206,12 +249,13 @@ void setup() {
   Serial.begin(9600);
   // Setup LED strip
   strip.begin();
-  // Update the strip, to start they are all 'off'
-  // strip.show();
-  lightColorFill(strip.Color(intensity, intensity, intensity)) // initialize the strip with default color and intensity
+  lightColorFill(strip.Color(red, green, blue)); // initialize the LED strip
+red = 8;
+blue = 8;
+green = 8;
   // Setup push buttons
   buttonColorSelect.init();
-  buttonLightFunction.init();
+  buttonLightFieldEffect.init();
   buttonOnOff.init();
   // Setup rotary encoder
   pinMode(rotaryEncoder1Pin, INPUT_PULLUP);
@@ -224,54 +268,89 @@ void loop()
 {
   // read buttons for events
   int event1 = buttonColorSelect.handle();
-  int event2 = buttonLightFunction.handle();
+  int event2 = buttonLightFieldEffect.handle();
   int event3 = buttonOnOff.handle();
 
   // deal with button events
   buttonEvent("ColorSelect", event1);
-  buttonEvent("LightFunction", event2);
+  buttonEvent("LightFieldEffect", event2);
   buttonEvent("OnOff", event3);
 
   // deal with encoder rotation
   if (rotateClockWise)
   {
-    if (intesity < 250) // light not at max brightness
+    if ((red<113) && (green<113)&& (blue<113)) // light not at max brightness
     {
-      intensity += 10;
-    }
-    switch (stripcolor)
+    switch (stripColor)
     {
-      case 1: lightColorFill(strip.Color(intensity, 0, 0));
+      case 0:
+        red +=8;
+        green +=8;
+        blue +=8;
         break;
-      case 2: lightColorFill(strip.Color(0, intensity, 0));
-        break;
-      case 3: lightColorFill(strip.Color(0, 0, intensity));
-        break;
-      case 4: lightColorFill(strip.Color(intensity, intensity, 0));
-        break;
+      case 1: 
+      red +=8;
+      break;
+      case 2: 
+      green +=8;
+      break;
+      case 3:
+      blue +=8;
+      break;
     }
-    rotateClockWise = FALSE; //reset rotation status
+    lightColorFill(strip.Color(red, green, blue));
+    rotateClockWise = false; //reset rotation status
+      Serial.print(red);
+      Serial.print(green);
+      Serial.println(blue);    
+    Serial.println("increase brightness of current color");
+    }
+    else
+    {Serial.print(red);
+      Serial.print(green);
+      Serial.println(blue);   
+      Serial.println("increase not possible");
+          rotateClockWise = false; //reset rotation status
+    }
   }
   if (rotateCounterClockWise)
   {
-    if (intesity > 0) // light not a minimum brighness
+    if ((red>15) || (green>15)|| (blue>15)) // light not at minimum brighness
     {
-      intensity -= 10;
-    }
-    switch (stripcolor)
+    switch (stripColor)
     {
-      case 1: lightColorFill(strip.Color(intensity, 0, 0));
+            case 0:
+        red -=8;
+        green -=8;
+        blue -=8;
         break;
-      case 2: lightColorFill(strip.Color(0, intensity, 0));
-        break;
-      case 3: lightColorFill(strip.Color(0, 0, intensity));
-        break;
-      case 4: lightColorFill(strip.Color(intensity, intensity, 0));
-        break;
+        case 1: 
+      red -=8;
+      break;
+      case 2: 
+      green -=8;
+      break;
+      case 3:
+      blue -=8;
+      break;
     }
-    rotateCounterClockWise = FALSE; //reset rotation status
-  }
+    lightColorFill(strip.Color(red, green, blue));
+    rotateCounterClockWise = false; //reset rotation status
+          Serial.print(red);
+      Serial.print(green);
+      Serial.println(blue);    
+    Serial.println("decrease brightness of current color");
+    }
+    else
+    {
+          Serial.print(red);
+      Serial.print(green);
+      Serial.println(blue);   
+      Serial.println("decrease not possible");
+          rotateCounterClockWise = false; //reset rotation status
 
+    }
+  }
   delay(loopDelay);
 }
 
@@ -449,7 +528,7 @@ void checkRE1Pin() {                                             // Pin2 went LO
     }
     if (digitalRead(rotaryEncoder2Pin) == LOW && halfleft == true) {       // <--
       halfleft = false;                                    // One whole click counter-
-      rotateCounterClockWise = TRUE;                                            // clockwise
+      rotateCounterClockWise = true;                                            // clockwise
     }
   }
 }
@@ -461,7 +540,7 @@ void checkRE2Pin() {                                            // Pin3 went LOW
     }                                                     // clockwise
     if (digitalRead(rotaryEncoder1Pin) == LOW && halfright == true) {     // -->
       halfright = false;                                  // One whole click clockwise
-      rotateClockWise = TRUE;
+      rotateClockWise = true;
     }
   }
 }
