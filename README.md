@@ -1,15 +1,15 @@
-# lightbar_lpd8806
+# lightbar
 LED light strip control
 
-Project Name : Lightbar
 Description : Control LED strips for simple lighting installations via buttons, rotary encoder. Initially allows user to set single color for strip, toggle LED light functions (patterns), and vary intensity.
 
 Sources
   -  Uses FastLED https://github.com/FastLED/FastLED
 
 Target
-  -  built for Arduino Uno
-  -  Adafruit Rotary Encoder 377b
+  - tested on Arduino Uno with LPD8806
+  - tested in Blinkytape (Arduino Leonardo with 13 WS2811)
+  - Adafruit Rotary Encoder 377b
 
 Revisions
   10/17/14
@@ -49,6 +49,12 @@ Revisions
     - 07/29/17 - FastLED 3.1 upgrade
     - 07/29/17 - move LED pins to SPI
     - 07/29/17 - how do I checkin code with new filename
+  08/06/17
+    - 07/29/17 - fix lightfieldeffects.ino after FastLED transition
+  11/21/17
+    - completed lightfieldeffects.ino fixes after FastLED transition
+    - conditional code branches for blinkytape and LPD8806
+    
 Feature Requests
   - 04/21/15
     -  why do many functions pass parameters that are not used?
@@ -59,12 +65,17 @@ Feature Requests
     - int to byte conversation for variables, as an example
   - 05/22/16
     - Why do I care about halfLeft and halfRight?
-  -  12/27/16
+  - 12/27/16
       - resistor in front of LED #1
-  -  12/29/16
+  - 12/29/16
       - improve codereability
       - functions for everything
       - buttons to library
         - impacts multiple projects
-  -  07/29/17        - 
-      - fix lightfieldeffects.ino after FastLED transition
+  - 07/29/17        - 
+      - CRGB::Red is green and CRGB::Green is Red?
+  - 08/06/17
+      - switch delay() to FASTLED.delay function?
+      - should I run a FastLED.clear() before each light function?
+  - 11/20/17
+      - conditional code for different LED strips beyond blinkytape and LPD8806

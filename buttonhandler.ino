@@ -49,6 +49,8 @@ void buttonEvent(const char* button_name, int event)
   //short press on LightFieldEffect does ???
   if ((button_name == "LightFieldEffect") && (event == 1))
   {
+    lightColorChase(CRGB::Red,50);
+    LEDS.clear();
     Serial.println("LightFieldEffect button short press"); //debug text
   }
 
@@ -85,15 +87,21 @@ void buttonEvent(const char* button_name, int event)
 
 void resolveButtons()
 {
-    // read buttons for events
+#ifdef blinkytape
+  int event2 = buttonLightFieldEffect.handle();
+   buttonEvent("LightFieldEffect", event2);
+  #else
+      // read buttons for events
+
   int event1 = buttonColorSelect.handle();
   int event2 = buttonLightFieldEffect.handle();
   int event3 = buttonOnOff.handle();
 
   // deal with button events
-  buttonEvent("ColorSelect", event1);
-  buttonEvent("LightFieldEffect", event2);
+    buttonEvent("ColorSelect", event1);
+    buttonEvent("LightFieldEffect", event2);
   buttonEvent("OnOff", event3);
+  #endif
 }
 
 void resolveRotaryEncoders()
@@ -135,8 +143,8 @@ Serial.println(stripBrightness);
   }
 }
 
-void checkRE1Pin()
-{
+#ifndef blinkytape
+void checkRE1Pin(){
   delay(1); //debounce
   if (digitalRead(rotaryEncoder1Pin) == LOW) // pin still LOW?
   {
@@ -152,8 +160,7 @@ void checkRE1Pin()
   }
 }
 
-void checkRE2Pin()
-{
+void checkRE2Pin(){
   delay(1); // debounce
   if (digitalRead(rotaryEncoder2Pin) == LOW) // pin still LOW?
   {
@@ -168,3 +175,4 @@ void checkRE2Pin()
     }
   }
 }
+#endif
