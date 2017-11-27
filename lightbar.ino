@@ -1,15 +1,16 @@
 /*
-  Project Name : Lightbar
-  Developer : Eric Klein Jr. (temp2@ericklein.com)
-  Description : Control LED strips for simple lighting installations via buttons, rotary encoder
+  Project Name:   Lightbar
+  Developer:      Eric Klein Jr. (temp2@ericklein.com)
+  Description:    Control LED strips for simple lighting installations via buttons, rotary encoder
+
   See README.md for target information, revision history, feature requests, etc.
 */
 
 // Library initialization
 #include <FastLED.h>
+#include <buttonhandler.h>
 
 // Conditional code
-#define debug
 #define blinkytape
 
 // Assign hardware specific information
@@ -34,9 +35,7 @@ int stripColor = 0; //off = 0; white = 1; red = 2; green = 3; blue = 4
 struct CRGB leds[NUM_LEDS]; 
 
 // globals related to buttons
-enum { EV_NONE = 0, EV_SHORTPRESS, EV_LONGPRESS };
-const byte longPressLength = 25;    // Min number of loops for a long press
-const byte debounceLength = 20;          // button debounce delay ms
+enum { BTN_NOPRESS = 0, BTN_SHORTPRESS, BTN_LONGPRESS };
 
 #ifndef blinktape
 // globals related to rotary encoder
@@ -45,61 +44,6 @@ volatile boolean rotateCounterClockWise = false;
 volatile boolean halfleft = false;      // Used in both interrupt routines
 volatile boolean halfright = false;
 #endif
-
-// Class definition
-class ButtonHandler {
-  public:
-    // Constructor
-    ButtonHandler(int pin, int longpress_len = longPressLength);
-
-    // Initialization done after construction, to permit static instances
-    void init();
-
-    // Handler, to be called in the loop()
-    int handle();
-
-  protected:
-    boolean was_pressed;     // previous state
-    int pressed_counter;     // press running duration
-    const int pin;           // pin to which button is connected
-    const int longpress_len; // longpress duration
-};
-
-ButtonHandler::ButtonHandler(int p, int lp)
-  : pin(p), longpress_len(lp)
-{
-}
-
-void ButtonHandler::init() {
-  pinMode(pin, INPUT_PULLUP);
-  was_pressed = false;
-  pressed_counter = 0;
-}
-
-int ButtonHandler::handle(){
-  int event;
-  int now_pressed = !digitalRead(pin);
-
-  if (!now_pressed && was_pressed) {
-    // handle release event
-    if (pressed_counter < longpress_len)
-      event = EV_SHORTPRESS;
-    else
-      event = EV_LONGPRESS;
-  }
-  else
-    event = EV_NONE;
-
-  // update press running duration
-  if (now_pressed)
-    ++pressed_counter;
-  else
-    pressed_counter = 0;
-
-  // remember state, and we're done
-  was_pressed = now_pressed;
-  return event;
-}
 
 // Instantiate button objects
 #ifdef blinkytape
@@ -112,9 +56,7 @@ ButtonHandler buttonOnOff(rotaryEncoderButtonPin);
 
 void setup() 
 {
-  #ifdef debug
     Serial.begin(57600);
-  #endif 
 
   #ifdef blinkytape
     FastLED.addLeds<WS2811, dataPin, GRB>(leds, NUM_LEDS);
@@ -144,5 +86,169 @@ void loop()
   #else
     resolveButtons();
     resolveRotaryEncoders();
+  #endif
+}
+
+#ifndef blinkytape
+void resolveRotaryEncoders(){
+  // deal with encoder rotation
+  if (rotateClockWise)
+  {
+    if (stripBrightness<248) // light not at max brightness
+    {
+      stripBrightness+=8;
+      LEDS.setBrightness(stripBrightness);
+      LEDS.show();
+      rotateClockWise = false; //reset rotation status
+            Serial.print("increase brightness of current color to ");
+Serial.println(stripBrightness);
+    }
+    else
+    { Serial.println("increase not possible");
+      rotateClockWise = false; //reset rotation status
+    }
+  }
+  if (rotateCounterClockWise)
+  {
+    if (stripBrightness>0) // light not at minimum brighness
+    {
+      stripBrightness-=8;
+      LEDS.setBrightness(stripBrightness);
+      LEDS.show();
+      rotateCounterClockWise = false; //reset rotation status
+      Serial.print("decrease brightness of current color to ");
+      Serial.println(stripBrightness);
+    }
+    else
+    {
+      Serial.println("decrease not possible");
+      rotateCounterClockWise = false; //reset rotation status
+
+    }
+  }
+}
+
+void checkRE1Pin(){
+  delay(1); //debounce
+  if (digitalRead(rotaryEncoder1Pin) == LOW) // pin still LOW?
+  {
+    if (digitalRead(rotaryEncoder2Pin) == HIGH && halfright == false)
+    {
+      halfright = true; // 1/2 click counter-clockwise
+    }
+    if (digitalRead(rotaryEncoder2Pin) == LOW && halfleft == true)
+    {
+      halfleft = false;
+      rotateCounterClockWise = true;  // one whole click counter-clockwise
+    }
+  }
+}
+
+void checkRE2Pin(){
+  delay(1); // debounce
+  if (digitalRead(rotaryEncoder2Pin) == LOW) // pin still LOW?
+  {
+    if (digitalRead(rotaryEncoder1Pin) == HIGH && halfleft == false)
+    {
+      halfleft = true; // 1/2 click clockwise
+    }
+    if (digitalRead(rotaryEncoder1Pin) == LOW && halfright == true)
+    {
+      halfright = false;
+      rotateClockWise = true;  // One whole click clockwise
+    }
+  }
+}
+#endif
+
+void resolveButtons(){
+#ifdef blinkytape
+   // resolve ColorSelect button
+   switch (buttonLightFieldEffect.handle()) {
+  case BTN_SHORTPRESS:
+    lightColorChase(CRGB::Red,50);
+    LEDS.clear();
+    Serial.println("LightFieldEffect button short press"); //debug text
+    break;
+  case BTN_LONGPRESS:
+    Serial.println("LightFieldEffect button long press"); //debug text
+    lightTest();
+    break;
+  }
+
+  #else
+
+  // resolve ColorSelect button
+  switch (buttonColorSelect.handle()) {
+    case BTN_SHORTPRESS:
+      switch (stripColor) {
+        case 0: // none -> white
+          Serial.println("ColorSelect button short press -> cycle to white");
+          fill_solid(leds, NUM_LEDS, CRGB::White);
+          stripColor = 1;
+          break;
+        case 1: //white -> red
+          Serial.println("ColorSelect button short press -> cycle to red");
+          fill_solid(leds, NUM_LEDS, CRGB::Red);
+          stripColor = 2;
+          break;
+        case 2: //red -> green
+          fill_solid(leds, NUM_LEDS, CRGB::Green);
+          Serial.println("ColorSelect button short press -> cycle to green");
+          stripColor = 3;
+          break;
+        case 3: //green -> blue
+          fill_solid(leds, NUM_LEDS, CRGB::Blue);
+          Serial.println("ColorSelect button short press -> cycle to blue");
+          stripColor = 4;
+          break;
+        case 4: //blue -> white
+          fill_solid(leds, NUM_LEDS, CRGB::White);
+          Serial.println("ColorSelect button short press -> cycle to white");
+          stripColor = 1;
+          break;
+      }
+      LEDS.show();
+    break;
+    case BTN_LONGPRESS:
+      Serial.println("ColorSelect button long press -> reset LED strip color to white");
+      stripColor = 1;
+      fill_solid(leds, NUM_LEDS, CRGB::White);
+      LEDS.show();
+      break;
+  }
+
+  // resolve LightFieldEffect button
+  switch (buttonLightFieldEffect.handle()) {
+    case BTN_SHORTPRESS:
+      Serial.println("LightFieldEffect button short press -> Red color chase then clear");
+      lightColorChase(CRGB::Red,50);
+      LEDS.clear();
+      break;
+    case BTN_LONGPRESS:
+      Serial.println("LightFieldEffect button long press -> LightTest then clear");
+      lightTest();
+      LEDS.clear();
+      break;
+  }
+
+    // resolve buttonOnOff button
+  switch (buttonOnOff.handle()) {
+    case BTN_SHORTPRESS:
+      Serial.println("Encoder button short press -> turn strip on if off");
+      if (stripColor == 0)
+        {
+          LEDS.showColor(CRGB::White);
+          LEDS.show();
+          stripColor = 1;
+        }
+      break;
+    case BTN_LONGPRESS:
+      Serial.println("Encoder button long press -> turn strip off");
+      LEDS.clear();
+      stripColor = 0;
+      break;
+  }
+
   #endif
 }

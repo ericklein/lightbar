@@ -4,11 +4,12 @@ LED light strip control
 Description : Control LED strips for simple lighting installations via buttons, rotary encoder. Initially allows user to set single color for strip, toggle LED light functions (patterns), and vary intensity.
 
 Sources
-  -  Uses FastLED https://github.com/FastLED/FastLED
+  - uses FastLED https://github.com/FastLED/FastLED
+  - uses button https://github.com/ericklein/button 
 
 Target
   - tested on Arduino Uno with LPD8806
-  - tested in Blinkytape (Arduino Leonardo with 13 WS2811)
+  - tested on Blinkytape (Arduino Leonardo with 60 WS2811)
   - Adafruit Rotary Encoder 377b
 
 Revisions
@@ -53,7 +54,9 @@ Revisions
     - 07/29/17 - fix lightfieldeffects.ino after FastLED transition
   11/21/17
     - completed lightfieldeffects.ino fixes after FastLED transition
-    - conditional code branches for blinkytape and LPD8806
+    - conditional code branching for blinkytape and LPD8806
+  11/26/17
+    - 11/20/17 - button globals probably don't need to be global
     
 Feature Requests
   - 04/21/15
@@ -69,9 +72,6 @@ Feature Requests
       - resistor in front of LED #1
   - 12/29/16
       - improve codereability
-      - functions for everything
-      - buttons to library
-        - impacts multiple projects
   - 07/29/17        - 
       - CRGB::Red is green and CRGB::Green is Red?
   - 08/06/17
@@ -79,3 +79,8 @@ Feature Requests
       - should I run a FastLED.clear() before each light function?
   - 11/20/17
       - conditional code for different LED strips beyond blinkytape and LPD8806
+      - enum stripColor for readability
+  - 11/24/17
+      - rotary encoder to to class/library/file separated functions
+      - stripColor should not also embed on/off status (see 03/02/16), impacts resolveButtons
+      - implement DEBUG flag for print and println
