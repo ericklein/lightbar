@@ -1,16 +1,19 @@
 # lightbar
 LED light strip control
 
-Description : Control LED strips for simple lighting installations via buttons, rotary encoder. Initially allows user to set single color for strip, toggle LED light functions (patterns), and vary intensity.
+Description : Library of light patterns for LED strips for stand-alone application or as library function for other applications
 
 Sources
   - uses FastLED https://github.com/FastLED/FastLED
   - uses button https://github.com/ericklein/button 
 
-Target
+Targets
   - tested on Arduino Uno with LPD8806
   - tested on Blinkytape (Arduino Leonardo with 60 WS2811)
   - Adafruit Rotary Encoder 377b
+
+Information Sources
+
 
 Revisions
   10/17/14
@@ -56,31 +59,47 @@ Revisions
     - completed lightfieldeffects.ino fixes after FastLED transition
     - conditional code branching for blinkytape and LPD8806
   11/26/17
+    - 12/29/16 - button support to library
     - 11/20/17 - button globals probably don't need to be global
+  05/05/19
+    - [FR 05/14/14] Implemented lightOneColor, lightOneColorFill, lightOneColorBlink, lightOneColorRamp
+    - [FR 04/21/15] why do many functions pass parameters that are not used?
+    - [FR 08/06//17] should I run a FastLED.clear() before each light function?
+      - Yes, functions don't clear themselves so higher logic can control this
+    - [FR 08/06/17] switch delay() to FastLED.delay function?
+      - No, FastLED.delay() only for platforms without native delay() function
+    - added brightness parameter to lightColorChase, lightTheatreChase
+    - updated button initialization based on changes to button library
     
 Feature Requests
-  - 04/21/15
-    -  why do many functions pass parameters that are not used?
+  - 05/14/14
+    - lightCylon(color, brightness, speed)
+    - lightPacMan(colorone, colortwo, speed, distancebetween)
+    - lightRainbow()
+    - lightWaterFlow()
+    - lightVolcano()
+    - lightFireplace()
   - 03/02/16
     -  on/off switch [software implementation 12/29/16]
     -  toggle light function switch
-    -  code optimization
-    - int to byte conversation for variables, as an example
+    -  memory optimization
+      - int to byte variable conversion
   - 05/22/16
     - Why do I care about halfLeft and halfRight?
   - 12/27/16
-      - resistor in front of LED #1
+      - resistor in front of LED #1 for LPD8086
   - 12/29/16
-      - improve codereability
+      - improve code readability
   - 07/29/17        - 
-      - CRGB::Red is green and CRGB::Green is Red?
-  - 08/06/17
-      - switch delay() to FASTLED.delay function?
-      - should I run a FastLED.clear() before each light function?
+      - CRGB::Red is green and CRGB::Green is Red? [LPD8086]
   - 11/20/17
-      - conditional code for different LED strips beyond blinkytape and LPD8806
       - enum stripColor for readability
   - 11/24/17
       - rotary encoder to to class/library/file separated functions
       - stripColor should not also embed on/off status (see 03/02/16), impacts resolveButtons
       - implement DEBUG flag for print and println
+    05/07/19
+      - Alexa support
+      - remote logging
+      - error handling
+      - not sure stripBrightness needs to be a global, each function should receive it

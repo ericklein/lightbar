@@ -30,14 +30,14 @@
 #endif
 
 // independent LED globals
-int stripBrightness = 32;
 int stripColor = 0; //off = 0; white = 1; red = 2; green = 3; blue = 4
 struct CRGB leds[NUM_LEDS]; 
 
 // globals related to buttons
 enum { BTN_NOPRESS = 0, BTN_SHORTPRESS, BTN_LONGPRESS };
+int stripBrightness = 32;
 
-#ifndef blinktape
+#ifndef blinkytape
 // globals related to rotary encoder
 volatile boolean rotateClockWise = false;
 volatile boolean rotateCounterClockWise = false;
@@ -47,16 +47,17 @@ volatile boolean halfright = false;
 
 // Instantiate button objects
 #ifdef blinkytape
-ButtonHandler buttonLightFieldEffect(lightFieldEffectPin);
+ButtonHandler buttonLightFieldEffect(lightFieldEffectPin, 20000);
 #else
-ButtonHandler buttonColorSelect(colorSelectPin);
-ButtonHandler buttonLightFieldEffect(lightFieldEffectPin);
-ButtonHandler buttonOnOff(rotaryEncoderButtonPin);
+ButtonHandler buttonColorSelect(colorSelectPin, 20000);
+ButtonHandler buttonLightFieldEffect(lightFieldEffectPin, 20000);
+ButtonHandler buttonOnOff(rotaryEncoderButtonPin, 20000);
 #endif
 
 void setup() 
 {
-    Serial.begin(57600);
+    Serial.begin(115200);
+  while (!Serial) ; 
 
   #ifdef blinkytape
     FastLED.addLeds<WS2811, dataPin, GRB>(leds, NUM_LEDS);
@@ -123,7 +124,6 @@ Serial.println(stripBrightness);
     {
       Serial.println("decrease not possible");
       rotateCounterClockWise = false; //reset rotation status
-
     }
   }
 }
@@ -166,9 +166,10 @@ void resolveButtons(){
    // resolve ColorSelect button
    switch (buttonLightFieldEffect.handle()) {
   case BTN_SHORTPRESS:
-    lightColorChase(CRGB::Red,50);
-    LEDS.clear();
     Serial.println("LightFieldEffect button short press"); //debug text
+    FastLED.clear();
+    stripBrightness = 100;
+    lightColorChase(CRGB::Red,stripBrightness,50);
     break;
   case BTN_LONGPRESS:
     Serial.println("LightFieldEffect button long press"); //debug text
