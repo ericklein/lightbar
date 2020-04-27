@@ -6,78 +6,104 @@
   See README.md for target information, revision history, feature requests, etc.
 */
 
-// Library initialization
-#include <FastLED.h>
-#include <buttonhandler.h>
-
 // Conditional code
-#define blinkytape
+//#define blinkytape
+#define DEBUG
+#define RGBWSupport
 
-// Assign hardware specific information
-#ifdef blinkytape
-  #define dataPin                  13 // LED strip
-  #define lightFieldEffectPin      10 // push button used to select light field effects
-  #define NUM_LEDS                 60 // BlinkyTape has 60 LEDs
+// Library initialization
+
+#ifdef RGBWSupport
+  #include <Adafruit_NeoPixel.h>
 #else
-  #define rotaryEncoder1Pin        2  // rotary encoder rotation
-  #define rotaryEncoder2Pin        3  // rotary encoder rotation
-  #define rotaryEncoderButtonPin   4  // rotary encoder button is used to turn LED strip on and off
-  #define dataPin                  11 // LED strip
-  #define clockPin                 13 // LED strip
-  #define colorSelectPin           10 // push button used to select color
-  #define lightFieldEffectPin      9  // push button used to select light field effects
-  #define NUM_LEDS                 18 // Number of RGB LEDs on strip
+  #include <FastLED.h>
+#endif
+#include <buttonhandler.h>
+#include <Encoder.h>
+
+// LED hardware
+#ifdef blinkytape
+  #define ledCount      60  // BlinkyTape has 60 LEDs
+#else
+  #define ledCount      17  // Number of RGB LEDs on strip
+#endif
+#define ledDataPin      12  // for one wire LED strips
+//#define ledClockPin   12  // for two wire LED strips
+#ifdef RGBWSupport
+  Adafruit_NeoPixel adafruitStrip(ledCount, ledDataPin, NEO_GRBW + NEO_KHZ800);
+#else
+  struct CRGB strip[ledCount]; 
+#endif
+// LED globals
+#define brightnessStepChange  2
+#define stripMinBrightness    6
+#define stripMaxBrightness    248
+int stripColor = 0;
+enum {white = 0, red, green, blue};
+int stripBrightness =         10;
+
+// Rotary encoder hardware
+#ifndef blinkytape
+  // these specific pins for most AVR hardware
+  #define rotaryEncoder1Pin        2      // expected to be counter-clockwise
+  #define rotaryEncoder2Pin        3      // expected to be clockwise
+  // globals related to rotary encoder
+  //boolean rotateClockWise = false;
+  //boolean rotateCounterClockWise = false;
+  Encoder rotaryEncoder(2, 3);
+  long encoderPosition = 0; 
 #endif
 
-// independent LED globals
-int stripColor = 0; //off = 0; white = 1; red = 2; green = 3; blue = 4
-struct CRGB leds[NUM_LEDS]; 
+// button hardware
+#ifndef blinkytape
+    // support for extra buttons
+    #define colorSelectPin          11  // push button used to select color
+    #define rotaryEncoderButtonPin  7
+#endif
+// assumes we will use the same pin that blinkytape is hard wired for
+#define lightFieldEffectPin         9  // push button used to select light field effects
+#define buttonLongPressDelay        2500
 
 // globals related to buttons
 enum { BTN_NOPRESS = 0, BTN_SHORTPRESS, BTN_LONGPRESS };
-int stripBrightness = 32;
-
-#ifndef blinkytape
-// globals related to rotary encoder
-volatile boolean rotateClockWise = false;
-volatile boolean rotateCounterClockWise = false;
-volatile boolean halfleft = false;      // Used in both interrupt routines
-volatile boolean halfright = false;
-#endif
-
 // Instantiate button objects
-#ifdef blinkytape
-ButtonHandler buttonLightFieldEffect(lightFieldEffectPin, 20000);
-#else
-ButtonHandler buttonColorSelect(colorSelectPin, 20000);
-ButtonHandler buttonLightFieldEffect(lightFieldEffectPin, 20000);
-ButtonHandler buttonOnOff(rotaryEncoderButtonPin, 20000);
+#ifndef blinkytape
+  // initialize extra buttons
+  ButtonHandler buttonColorSelect(colorSelectPin, buttonLongPressDelay);
+  ButtonHandler buttonOnOff(rotaryEncoderButtonPin, buttonLongPressDelay);
 #endif
+ButtonHandler buttonLightFieldEffect(lightFieldEffectPin, buttonLongPressDelay);
 
 void setup() 
 {
-    Serial.begin(115200);
-  while (!Serial) ; 
-
-  #ifdef blinkytape
-    FastLED.addLeds<WS2811, dataPin, GRB>(leds, NUM_LEDS);
-    // Setup push buttons
-    buttonLightFieldEffect.init();  
-  #else
-    FastLED.addLeds<LPD8806, dataPin, clockPin, RGB>(leds, NUM_LEDS);
-    // Setup push buttons
-    buttonColorSelect.init();
-    buttonLightFieldEffect.init();
-    buttonOnOff.init();
-    // Setup rotary encoder
-    pinMode(rotaryEncoder1Pin, INPUT_PULLUP);
-    pinMode(rotaryEncoder2Pin, INPUT_PULLUP);
-    attachInterrupt(digitalPinToInterrupt(rotaryEncoder1Pin), checkRE1Pin, FALLING);   // Call checkRE1Pin when digital pin 2 goes LOW
-    attachInterrupt(digitalPinToInterrupt(rotaryEncoder2Pin), checkRE2Pin, FALLING);   // Call checkRE2Pin when digital pin 3 goes LOW
+  Serial.begin(115200);
+  while (!Serial) ;
+  #ifdef DEBUG
+    Serial.println("Lightbar started");
   #endif
-  FastLED.clear();
-  FastLED.setBrightness(stripBrightness);
-  FastLED.show();
+
+  // setup LED strip
+  #ifdef blinkytape
+    FastLED.addLeds<WS2811, dataPin, GRB>(ledStrip, ledCount);
+    // Setup push buttons
+  #endif
+  #ifdef RGBWSupport
+    adafruitStrip.begin(); // INITIALIZE NeoPixel strip object (REQUIRED)
+    adafruitStrip.setBrightness(stripBrightness);
+    adafruitStrip.fill(adafruitStrip.Color(0,0,0,255),0,ledCount);
+    adafruitStrip.show();
+  #else
+    FastLED.addLeds<LPD8806, dataPin, clockPin, GRB>(ledStrip, ledCount);
+    FastLED.clear();
+  #endif
+
+  // Setup push buttons
+  #ifndef blinkytape
+    buttonColorSelect.init();
+    buttonOnOff.init();
+  #endif
+
+  buttonLightFieldEffect.init();  
 }
 
 void loop()
@@ -90,166 +116,195 @@ void loop()
   #endif
 }
 
-#ifndef blinkytape
-void resolveRotaryEncoders(){
-  // deal with encoder rotation
-  if (rotateClockWise)
-  {
-    if (stripBrightness<248) // light not at max brightness
+void resolveRotaryEncoders()
+{
+  long newEncoderPosition;
+  newEncoderPosition = rotaryEncoder.read();
+  #ifdef DEBUG
+    if (newEncoderPosition != encoderPosition)
     {
-      stripBrightness+=8;
-      LEDS.setBrightness(stripBrightness);
-      LEDS.show();
-      rotateClockWise = false; //reset rotation status
-            Serial.print("increase brightness of current color to ");
-Serial.println(stripBrightness);
+      Serial.print("Old position ");
+      Serial.print(encoderPosition);
+      Serial.print(", new position ");
+      Serial.println(newEncoderPosition);
     }
-    else
-    { Serial.println("increase not possible");
-      rotateClockWise = false; //reset rotation status
-    }
-  }
-  if (rotateCounterClockWise)
+  #endif
+  if (newEncoderPosition != encoderPosition)
   {
-    if (stripBrightness>0) // light not at minimum brighness
-    {
-      stripBrightness-=8;
-      LEDS.setBrightness(stripBrightness);
-      LEDS.show();
-      rotateCounterClockWise = false; //reset rotation status
-      Serial.print("decrease brightness of current color to ");
+    stripBrightness = stripBrightness+((newEncoderPosition - encoderPosition) * brightnessStepChange);
+    stripBrightness = constrain(stripBrightness, stripMinBrightness , stripMaxBrightness);
+    #ifdef RGBWSupport
+    adafruitStrip.setBrightness(stripBrightness);
+    adafruitStrip.show();
+    #else
+      FastLED.setBrightness(stripBrightness);
+      FastLED.show();
+    #endif
+    #ifdef DEBUG
+      Serial.print("Brightness changed to ");
       Serial.println(stripBrightness);
-    }
-    else
-    {
-      Serial.println("decrease not possible");
-      rotateCounterClockWise = false; //reset rotation status
-    }
+    #endif
   }
+  encoderPosition = newEncoderPosition;
 }
 
-void checkRE1Pin(){
-  delay(1); //debounce
-  if (digitalRead(rotaryEncoder1Pin) == LOW) // pin still LOW?
+void resolveButtons()
+{
+  // resolve lightFieldEffect button
+  switch (buttonLightFieldEffect.handle())
   {
-    if (digitalRead(rotaryEncoder2Pin) == HIGH && halfright == false)
-    {
-      halfright = true; // 1/2 click counter-clockwise
-    }
-    if (digitalRead(rotaryEncoder2Pin) == LOW && halfleft == true)
-    {
-      halfleft = false;
-      rotateCounterClockWise = true;  // one whole click counter-clockwise
-    }
-  }
-}
-
-void checkRE2Pin(){
-  delay(1); // debounce
-  if (digitalRead(rotaryEncoder2Pin) == LOW) // pin still LOW?
-  {
-    if (digitalRead(rotaryEncoder1Pin) == HIGH && halfleft == false)
-    {
-      halfleft = true; // 1/2 click clockwise
-    }
-    if (digitalRead(rotaryEncoder1Pin) == LOW && halfright == true)
-    {
-      halfright = false;
-      rotateClockWise = true;  // One whole click clockwise
-    }
-  }
-}
-#endif
-
-void resolveButtons(){
-#ifdef blinkytape
-   // resolve ColorSelect button
-   switch (buttonLightFieldEffect.handle()) {
-  case BTN_SHORTPRESS:
-    Serial.println("LightFieldEffect button short press"); //debug text
-    FastLED.clear();
-    stripBrightness = 100;
-    lightColorChase(CRGB::Red,stripBrightness,50);
-    break;
-  case BTN_LONGPRESS:
-    Serial.println("LightFieldEffect button long press"); //debug text
-    lightTest();
-    break;
+    case BTN_SHORTPRESS:
+      #ifdef DEBUG
+        Serial.println("LightFieldEffect button short press");
+      #endif
+      break;
+    case BTN_LONGPRESS:
+      #ifdef DEBUG
+        Serial.println("LightFieldEffect button long press");
+      #endif
+      break;
   }
 
-  #else
-
+  #ifndef blinkytape
   // resolve ColorSelect button
   switch (buttonColorSelect.handle()) {
     case BTN_SHORTPRESS:
-      switch (stripColor) {
-        case 0: // none -> white
-          Serial.println("ColorSelect button short press -> cycle to white");
-          fill_solid(leds, NUM_LEDS, CRGB::White);
-          stripColor = 1;
+      switch (stripColor)
+      {
+        case white: // white -> red
+          #ifdef DEBUG
+            Serial.print("ColorSelect button short press -> cycle to red at brightness ");
+            Serial.println(stripBrightness);
+          #endif
+          #ifdef RGBWSupport
+            adafruitStrip.fill(adafruitStrip.Color(255,0,0,0),0,ledCount);
+            adafruitStrip.show();
+          #else
+            fill_solid(ledStrip, ledCount, CRGB::Red);
+            FastLED.show();
+          #endif
+          stripColor = red;
           break;
-        case 1: //white -> red
-          Serial.println("ColorSelect button short press -> cycle to red");
-          fill_solid(leds, NUM_LEDS, CRGB::Red);
-          stripColor = 2;
+        case red: // red -> green
+          #ifdef DEBUG
+            Serial.print("ColorSelect button short press -> cycle to green at brightness ");
+            Serial.println(stripBrightness);
+          #endif
+          #ifdef RGBWSupport
+            adafruitStrip.fill(adafruitStrip.Color(0,255,0,0),0,ledCount);
+            adafruitStrip.show();
+          #else
+            fill_solid(ledStrip, ledCount, CRGB::Green);
+            FastLED.show();
+          #endif
+          stripColor = green;
           break;
-        case 2: //red -> green
-          fill_solid(leds, NUM_LEDS, CRGB::Green);
-          Serial.println("ColorSelect button short press -> cycle to green");
-          stripColor = 3;
+        case green: // green -> blue
+          #ifdef DEBUG
+            Serial.print("ColorSelect button short press -> green to blue at brightness ");
+            Serial.println(stripBrightness);
+          #endif
+          #ifdef RGBWSupport
+            adafruitStrip.fill(adafruitStrip.Color(0,0,255,0),0,ledCount);
+            adafruitStrip.show();
+          #else
+            fill_solid(ledStrip, ledCount, CRGB::BLUE);
+            FastLED.show();
+          #endif
+          stripColor = blue;
           break;
-        case 3: //green -> blue
-          fill_solid(leds, NUM_LEDS, CRGB::Blue);
-          Serial.println("ColorSelect button short press -> cycle to blue");
-          stripColor = 4;
-          break;
-        case 4: //blue -> white
-          fill_solid(leds, NUM_LEDS, CRGB::White);
-          Serial.println("ColorSelect button short press -> cycle to white");
-          stripColor = 1;
+        case blue: // blue -> white
+          #ifdef DEBUG
+            Serial.print("ColorSelect button short press -> blue to white at brightness ");
+            Serial.println(stripBrightness);
+          #endif
+          #ifdef RGBWSupport
+            adafruitStrip.fill(adafruitStrip.Color(255,255,255,0),0,ledCount);
+            adafruitStrip.show();
+          #else
+            fill_solid(ledStrip, ledCount, CRGB::White);
+            FastLED.show();
+          #endif
+          stripColor = white;
           break;
       }
-      LEDS.show();
     break;
     case BTN_LONGPRESS:
-      Serial.println("ColorSelect button long press -> reset LED strip color to white");
-      stripColor = 1;
-      fill_solid(leds, NUM_LEDS, CRGB::White);
-      LEDS.show();
-      break;
+      switch (stripColor)
+      {
+        case white:
+          #ifdef DEBUG
+            Serial.print("ColorSelect button long press -> white + white LED at brightness ");
+            Serial.println(stripBrightness);
+          #endif
+          #ifdef RGBWSupport
+            adafruitStrip.fill(adafruitStrip.Color(255,255,255,255),0,ledCount);
+            adafruitStrip.show();
+          #else
+            #ifdef DEBUG
+              Serial.println("ColorSelect button long press -> function TBD");
+            #endif
+          #endif
+          break;
+        case red: 
+          #ifdef DEBUG
+            Serial.print("ColorSelect button long press -> red + white LED at brightness ");
+            Serial.println(stripBrightness);
+          #endif
+          #ifdef RGBWSupport
+            adafruitStrip.fill(adafruitStrip.Color(255,0,0,255),0,ledCount);
+            adafruitStrip.show();
+          #else
+            #ifdef DEBUG
+              Serial.println("ColorSelect button long press -> function TBD");
+            #endif
+          #endif
+          break;
+        case green: 
+          #ifdef DEBUG
+            Serial.print("ColorSelect button long press -> green + white LED at brightness ");
+            Serial.println(stripBrightness);
+          #endif
+          #ifdef RGBWSupport
+            adafruitStrip.fill(adafruitStrip.Color(0,255,0,255),0,ledCount);
+            adafruitStrip.show();
+          #else
+            #ifdef DEBUG
+              Serial.println("ColorSelect button long press -> function TBD");
+            #endif
+          #endif
+          break;
+        case blue:
+          #ifdef DEBUG
+            Serial.print("ColorSelect button long press -> blue + white LED at brightness ");
+            Serial.println(stripBrightness);
+          #endif
+          #ifdef RGBWSupport
+            adafruitStrip.fill(adafruitStrip.Color(0,0,255,255),0,ledCount);
+            adafruitStrip.show();
+          #else
+            #ifdef DEBUG
+              Serial.println("ColorSelect button long press -> function TBD");
+            #endif      
+          #endif
+          break;
+      }
+    break;
   }
 
-  // resolve LightFieldEffect button
-  switch (buttonLightFieldEffect.handle()) {
+  // resolve buttonOnOff button
+  switch (buttonOnOff.handle()) 
+  {
     case BTN_SHORTPRESS:
-      Serial.println("LightFieldEffect button short press -> Red color chase then clear");
-      lightColorChase(CRGB::Red,50);
-      LEDS.clear();
+      #ifdef DEBUG
+        Serial.println("Encoder button short press -> turn strip on if off");
+      #endif
       break;
     case BTN_LONGPRESS:
-      Serial.println("LightFieldEffect button long press -> LightTest then clear");
-      lightTest();
-      LEDS.clear();
+      #ifdef DEBUG
+        Serial.println("Encoder button long press -> turn strip off");
+      #endif
       break;
   }
-
-    // resolve buttonOnOff button
-  switch (buttonOnOff.handle()) {
-    case BTN_SHORTPRESS:
-      Serial.println("Encoder button short press -> turn strip on if off");
-      if (stripColor == 0)
-        {
-          LEDS.showColor(CRGB::White);
-          LEDS.show();
-          stripColor = 1;
-        }
-      break;
-    case BTN_LONGPRESS:
-      Serial.println("Encoder button long press -> turn strip off");
-      LEDS.clear();
-      stripColor = 0;
-      break;
-  }
-
   #endif
 }
