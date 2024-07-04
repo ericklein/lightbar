@@ -1,4 +1,4 @@
-# lightbar
+N# lightbar
 ## What is lightbar? 
 Simple packet communication between 900mhz radios. reciever is half of the solution, the other half is in the transmitter application.
 

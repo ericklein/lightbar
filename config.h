@@ -19,18 +19,18 @@
 	#define buttonOnePin	9	// fixed PIN
 #else
 	#define ledCount      20  // Number of RGB LEDs on strip
-	#define buttonOnePin    9  // push button
-  	#define rotaryEncoderOnePin1    11  // counter-clockwise, used to change brighness
-  	#define rotaryEncoderOnePin2    10  // clockwise, used to change brightness
-	#define ledDataPin      12  // for one wire LED strips
+	#define buttonOnePin    11  // push button
+  	#define rotaryEncoderOnePin1    9  // counter-clockwise, used to change brighness
+  	#define rotaryEncoderOnePin2    10 // clockwise, used to change brightness
+	#define ledDataPin      16  // for one wire LED strips
 	//#define ledClockPin   12  // for two wire LED strips
 #endif
 
 // LED configuration
 #define ledsPerBank		5
-#define stripMinBrightness 6
-#define stripMaxBrightness 248
-#define brightnessStepChange 2
+#define ledStripMinBrightness 6
+#define ledStripMaxBrightness 248
+#define ledStripBrightnessStepChange 2
 
 // button configuration
 //#define buttonLongPressDelay 2500

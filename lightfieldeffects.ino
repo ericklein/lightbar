@@ -1,11 +1,8 @@
 /*
-  Project Name : lightfieldeffects
-  Developer : Eric Klein Jr. (temp2@ericklein.com)
-  Description : LED strip animation routines
-      
-  Light functions
-    re-write this
+  Project:      lightbar effects
+  Description:  self contained effects for lightbar
 */
+
 
 void lightTest()
 {
